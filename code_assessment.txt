@@ -87,9 +87,12 @@ Steps to run the Application
 
 4. Pass all the inputs one by one or all at once in the console producer 
 
+5. Run the Spark job 
+
 The output looks 
  ----------------------------------------------------------------------
 | SensorID |       start         |               end   | MaxReading    |
+|-----------------------------------------------------------------------
 | SEN001   | 2021-01-05 08:45:00 | 2021-01-05 08:50:00 |   38.5        |
 | SEN001   | 2021-01-05 08:50:00 | 2021-01-05 09:13:00 |   39.6        |
 
