@@ -1,5 +1,5 @@
 Problem Statement:
-A sensor emits a reading at a regular interval and that goes to a Kafka topic.  The reading 
+A sensor emits a reading at a regular interval and that goes to a Kafka topic.  The reading looks like a JSON Message. 
 The key is the Sensor ID, created time is the event time and reading is the value.  This is a patient monitoring system where the sensor is attached to a patient measuring the value.
 The first two columns are start and end time, third column is the max reading value, received in the most recent 15 minutes
 The solution is to get the maximum temperature in the 15-minute window 
