@@ -8,7 +8,7 @@ However, we are asked to report the outcome every five minutes
 The sensor reading looks as below
 SEN001:{"CreatedTime": "2021-01-05 08:45:00","Reading": 36.2}
 SEN001:{"CreatedTime": "2021-01-05 08:50:00","Reading": 38.5}
-SEN001:{"CreatedTime": "2021-01-05 09:03:00","Reading": 37.6}
+SEN001:{"CreatedTime": "2021-01-05 09:03:00","Reading": 39.6}
 SEN001:{"CreatedTime": "2021-01-05 09:13:00","Reading": 35.5}
 
 Solution:
@@ -16,13 +16,25 @@ If we consider, Tumbling window of 15 minutes and trigger time of 5 minutes
 The windows will not overlap. But in our case, it overlaps. Each window overlaps by 10 minutes. So, we need to use Sliding Window.
 Sliding windows are an excellent tool for computing moving aggregates
 Each event is most likely to participate in more than one window due to the overlaps.
+Where as in Tumbling window, each event will be part of only one window.
 
-We construct a schema for the sensor data
+1. Define a spark session
+val spark = SparkSession.builder()
+      .master("local[1]")
+      .appName("Sliding Window Demo")
+      .config("spark.streaming.stopGracefullyOnShutdown", "true")
+      .config("spark.sql.shuffle.partitions", 1)
+      .getOrCreate()
+
+
+2. Define the schema for the input sensor records
+
 val sensorSchema = StructType(List(
       StructField("CreatedTime", StringType),
       StructField("Reading", DoubleType)
     ))
-Create a Dataframe to read the data from the kafka topic as below
+
+3. Read the streaming from Kafka Topics
 val kafkaSrcDF = spark.
 		    readStream.
                     format("kafka").
@@ -31,27 +43,31 @@ val kafkaSrcDF = spark.
                     option("startingOffsets", "earliest").
                     load()
 
-Extract the key & value data from the kafkaSrcDF and provided alias names 
+4. Extract the key & value data from the kafkaSrcDF and provided alias names 
 val valueDF = kafkaSrcDF.
                         select(col("key").cast("string").alias("SensorID"),from_json(
 			col("value").cast("string"), invoiceSchema).alias("value"))
 
-Add a new column with time formatted as below
+5. Add a new column with time formatted as below
 val sensorDF = valueDF.select("SensorID", "value.*").
 		       withColumn("CreatedTime", to_timestamp(col("CreatedTime"), "yyyy-MM-dd HH:mm:ss"))
 
-WaterMark time as 30 minutes, any data beyond 30 minutes boundry will be ignored.
-Grouping by SensorID and window column as CreatedTime with 15 minute time and 5 minute as trigger time
-Getting the max Reading value with every 15 minutes sliding window
 
-val aggDF = sensorDF.withWatermark("CreatedTime", "30 minute").groupBy(col("SensorID"),
-  			window(col("CreatedTime"), "15 minute", "5 minute")).
-			agg(max("Reading").alias("MaxReading"))
+6. WaterMark time set as 30 minutes, any window outside of the Watermark will be cleaned
+Spark will ignore all late coming records for those windows
 
-Create output dataframe 
+Grouping by SensorID ,Time Window and first argument is event time column, second window duration is set to 15 minute time and slide duration is set to 5 minutes
+
+And compute the aggregates 
+
+val aggDF = sensorDF.withWatermark("CreatedTime", "30 minute").
+		groupBy(col("SensorID"), window(col("CreatedTime"), "15 minute", "5 minute")).
+		agg(max("Reading").alias("MaxReading"))
+
+7. Formatting the output Records 
 val outputDF = aggDF.select("SensorID", "window.start", "window.end", "MaxReading")
 
-Writing the output stream on console 
+8. Writing the output stream on console 
 val windowQuery = outputDF.
 		  writeStream.
 		  format("console").
@@ -61,8 +77,24 @@ val windowQuery = outputDF.
 
 windowQuery.awaitTermination()
 
+Steps to run the Application
+1. Run the Zookeeper and Kafka Server
+2. Create a topic
+   kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic sensor
+
+3. Start the Producer
+   kafka-console-producer.sh --broker-list localhost:9092 --topic sensor --property "parse.key=true" --property "key.separator=:"
+
+4. Pass all the inputs one by one or all at once in the console producer 
+
+The output looks 
+ ----------------------------------------------------------------------
+| SensorID |       start         |               end   | MaxReading    |
+| SEN001   | 2021-01-05 08:45:00 | 2021-01-05 08:50:00 |   38.5        |
+| SEN001   | 2021-01-05 08:50:00 | 2021-01-05 09:13:00 |   39.6        |
 
 
+-------------------------------------------------------------------------
 
 
 
